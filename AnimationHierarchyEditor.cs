@@ -66,6 +66,8 @@ public class AnimationHierarchyEditor : EditorWindow {
 
 			GUILayout.Space(40);
 			GUILayout.EndScrollView();
+		} else {
+			GUILayout.Label("Please select an Animation Clip");
 		}
 	}
 
