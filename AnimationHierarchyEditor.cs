@@ -1,12 +1,14 @@
 using UnityEngine;
 using UnityEditor;
 using System.Collections;
+using System.Collections.Generic;
+using System.Text.RegularExpressions;
 
 public class AnimationHierarchyEditor : EditorWindow {
 	private static int columnWidth = 300;
 	
 	private Animator animatorObject;
-	private AnimationClip animationClip;
+	private List<AnimationClip> animationClips;
 	private ArrayList pathsKeys;
 	private Hashtable paths;
 	private Vector2 scrollPos = Vector2.zero;
@@ -15,17 +17,34 @@ public class AnimationHierarchyEditor : EditorWindow {
 	static void ShowWindow() {
 		EditorWindow.GetWindow<AnimationHierarchyEditor>();
 	}
+
+	public AnimationHierarchyEditor(){
+		animationClips = new List<AnimationClip>();
+	}
 	
 	void OnSelectionChange() {
-		if (Selection.activeObject is AnimationClip) {
-			animationClip = (AnimationClip)Selection.activeObject;
+		if (Selection.objects.Length > 1 )
+		{
+			Debug.Log ("Length? " + Selection.objects.Length);
+			animationClips.Clear();
+			foreach ( Object o in Selection.objects )
+			{
+				if ( o is AnimationClip ) animationClips.Add((AnimationClip)o);
+			}
+		}
+		else if (Selection.activeObject is AnimationClip) {
+			animationClips.Clear();
+			animationClips.Add((AnimationClip)Selection.activeObject);
 			FillModel();
 		} else {
-			animationClip = null;
+			animationClips.Clear();
 		}
 		
 		this.Repaint();
 	}
+
+	private string sOriginalRoot = "Root";
+	private string sNewRoot = "SomeNewObjectHere/Root";
 	
 	void OnGUI() {
 		if (Event.current.type == EventType.ValidateCommand) {
@@ -36,25 +55,55 @@ public class AnimationHierarchyEditor : EditorWindow {
 			}
 		}
 		
-		if (animationClip != null) {
+		if (animationClips.Count > 0 ) {
 			scrollPos = GUILayout.BeginScrollView(scrollPos, GUIStyle.none);
 			
 			EditorGUILayout.BeginHorizontal();
 			GUILayout.Label("Referenced Animator (Root):", GUILayout.Width(columnWidth));
+
 			animatorObject = ((Animator)EditorGUILayout.ObjectField(
 				animatorObject,
 				typeof(Animator),
 				true,
 				GUILayout.Width(columnWidth))
-			);
+			                  );
 			
+
+			EditorGUILayout.EndHorizontal();
+			EditorGUILayout.BeginHorizontal();
+			GUILayout.Label("Animation Clip:", GUILayout.Width(columnWidth));
+
+			if ( animationClips.Count == 1 )
+			{
+				animationClips[0] = ((AnimationClip)EditorGUILayout.ObjectField(
+					animationClips[0],
+					typeof(AnimationClip),
+					true,
+					GUILayout.Width(columnWidth))
+	                              );
+			}           
+			else
+			{
+				GUILayout.Label("Multiple Anim Clips: " + animationClips.Count, GUILayout.Width(columnWidth));
+			}
+            EditorGUILayout.EndHorizontal();
+			GUILayout.Space(20);
+
+			EditorGUILayout.BeginHorizontal();
+
+			sOriginalRoot = EditorGUILayout.TextField(sOriginalRoot, GUILayout.Width(columnWidth));
+			sNewRoot = EditorGUILayout.TextField(sNewRoot, GUILayout.Width(columnWidth));
+			if (GUILayout.Button("Replace Root")) {
+				Debug.Log("O: "+sOriginalRoot+ " N: "+sNewRoot);
+				ReplaceRoot(sOriginalRoot, sNewRoot);
+			}
+
 			EditorGUILayout.EndHorizontal();
 
-			GUILayout.Space(20);
-			
 			EditorGUILayout.BeginHorizontal();
 			GUILayout.Label("Reference path:", GUILayout.Width(columnWidth));
-			GUILayout.Label("Animated properties:", GUILayout.Width(columnWidth));
+			GUILayout.Label("Animated properties:", GUILayout.Width(columnWidth*0.5f));
+			GUILayout.Label("(Count)", GUILayout.Width(60));
 			GUILayout.Label("Object:", GUILayout.Width(columnWidth));
 			EditorGUILayout.EndHorizontal();
 			
@@ -80,14 +129,14 @@ public class AnimationHierarchyEditor : EditorWindow {
 		EditorGUILayout.BeginHorizontal();
 		
 		newPath = EditorGUILayout.TextField(path, GUILayout.Width(columnWidth));
-
-        if (GUILayout.Button("Root")) {
-            newPath = "";
-        }
+		
+		if (GUILayout.Button("Root")) {
+			newPath = "";
+		}
 		
 		EditorGUILayout.LabelField(
 			properties != null ? properties.Count.ToString() : "0",
-			GUILayout.Width(columnWidth)
+			GUILayout.Width(60)
 			);
 		
 		Color standardColor = GUI.color;
@@ -120,6 +169,10 @@ public class AnimationHierarchyEditor : EditorWindow {
 		} catch (UnityException ex) {
 			Debug.LogError(ex.Message);
 		}
+
+		
+		FillModel();
+		this.Repaint();
 	}
 	
 	void OnInspectorUpdate() {
@@ -130,67 +183,119 @@ public class AnimationHierarchyEditor : EditorWindow {
 		paths = new Hashtable();
 		pathsKeys = new ArrayList();
 
-        FillModelWithCurves(AnimationUtility.GetCurveBindings(animationClip));
-        FillModelWithCurves(AnimationUtility.GetObjectReferenceCurveBindings(animationClip));
+		foreach ( AnimationClip animationClip in animationClips )
+		{
+			FillModelWithCurves(AnimationUtility.GetCurveBindings(animationClip));
+			FillModelWithCurves(AnimationUtility.GetObjectReferenceCurveBindings(animationClip));
+		}
 	}
+	
+	private void FillModelWithCurves(EditorCurveBinding[] curves) {
+		foreach (EditorCurveBinding curveData in curves) {
+			string key = curveData.path;
+			
+			if (paths.ContainsKey(key)) {
+				((ArrayList)paths[key]).Add(curveData);
+			} else {
+				ArrayList newProperties = new ArrayList();
+				newProperties.Add(curveData);
+				paths.Add(key, newProperties);
+				pathsKeys.Add(key);
+			}
+		}
+	}
+	 
+	void ReplaceRoot(string oldRoot, string newRoot)
+	{
+		foreach ( AnimationClip animationClip in animationClips )
+		{
+			Undo.RecordObject(animationClip, "Animation Hierarchy Root Change");
+			
+			//recreating all curves one by one
+			//to maintain proper order in the editor - 
+			//slower than just removing old curve
+			//and adding a corrected one, but it's more
+			//user-friendly
+			foreach (string path in pathsKeys) {
+				ArrayList curves = (ArrayList)paths[path];
+				
+				for (int i = 0; i < curves.Count; i++) {
+					EditorCurveBinding binding = (EditorCurveBinding)curves[i];
+					AnimationCurve curve = AnimationUtility.GetEditorCurve(animationClip, binding);
+					ObjectReferenceKeyframe[] objectReferenceCurve = null;
+					
+					if (curve != null) {
+						AnimationUtility.SetEditorCurve(animationClip, binding, null);
+					} else {
+						objectReferenceCurve = AnimationUtility.GetObjectReferenceCurve(animationClip, binding);
+						AnimationUtility.SetObjectReferenceCurve(animationClip, binding, null);
+					}
 
-    private void FillModelWithCurves(EditorCurveBinding[] curves) {
-        foreach (EditorCurveBinding curveData in curves) {
-            string key = curveData.path;
+	                if ( path.Contains(oldRoot) )
+					{
+						int iIndex = path.IndexOf(oldRoot);
+						if ( !path.Contains(newRoot) )
+						{
+							string sNewPath = Regex.Replace(path, "^"+oldRoot, newRoot );	                    						
+							binding.path = sNewPath;
+	                    }
+					}
 
-            if (paths.ContainsKey(key)) {
-                ((ArrayList)paths[key]).Add(curveData);
-            } else {
-                ArrayList newProperties = new ArrayList();
-                newProperties.Add(curveData);
-                paths.Add(key, newProperties);
-                pathsKeys.Add(key);
-            }
-        }
-    }
+					if (curve != null) {
+						AnimationUtility.SetEditorCurve(animationClip, binding, curve);
+		            } else {
+		                AnimationUtility.SetObjectReferenceCurve(animationClip, binding, objectReferenceCurve);
+		            }
+		            
+		        }
+		    }
+		    
+		}
+    	FillModel();
+		this.Repaint();
+	}
 	
 	void UpdatePath(string oldPath, string newPath) {
 		if (paths[newPath] != null) {
 			throw new UnityException("Path " + newPath + " already exists in that animation!");
 		}
-		
-		Undo.RecordObject(animationClip, "Animation Hierarchy Change");
-		
-		//recreating all curves one by one
-		//to maintain proper order in the editor - 
-		//slower than just removing old curve
-		//and adding a corrected one, but it's more
-		//user-friendly
-		foreach (string path in pathsKeys) {
-			ArrayList curves = (ArrayList)paths[path];
+		foreach ( AnimationClip animationClip in animationClips )
+        {
+            Undo.RecordObject(animationClip, "Animation Hierarchy Change");
 			
-			for (int i = 0; i < curves.Count; i++) {
-				EditorCurveBinding binding = (EditorCurveBinding)curves[i];
-				AnimationCurve curve = AnimationUtility.GetEditorCurve(animationClip, binding);
-                ObjectReferenceKeyframe[] objectReferenceCurve = null;
-
-                if (curve != null) {
-                    AnimationUtility.SetEditorCurve(animationClip, binding, null);
-                } else {
-                    objectReferenceCurve = AnimationUtility.GetObjectReferenceCurve(animationClip, binding);
-                    AnimationUtility.SetObjectReferenceCurve(animationClip, binding, null);
-                }
-
-                if (path == oldPath) {
-                    binding.path = newPath;
-                }
-
-                if (curve != null) {
-                    AnimationUtility.SetEditorCurve(animationClip, binding, curve);
-                } else {
-                    AnimationUtility.SetObjectReferenceCurve(animationClip, binding, objectReferenceCurve);
-                }
-                
+			//recreating all curves one by one
+			//to maintain proper order in the editor - 
+			//slower than just removing old curve
+			//and adding a corrected one, but it's more
+			//user-friendly
+			foreach (string path in pathsKeys) {
+				ArrayList curves = (ArrayList)paths[path];
+				
+				for (int i = 0; i < curves.Count; i++) {
+					EditorCurveBinding binding = (EditorCurveBinding)curves[i];
+					AnimationCurve curve = AnimationUtility.GetEditorCurve(animationClip, binding);
+					ObjectReferenceKeyframe[] objectReferenceCurve = null;
+					
+					if (curve != null) {
+						AnimationUtility.SetEditorCurve(animationClip, binding, null);
+					} else {
+						objectReferenceCurve = AnimationUtility.GetObjectReferenceCurve(animationClip, binding);
+						AnimationUtility.SetObjectReferenceCurve(animationClip, binding, null);
+					}
+					
+					if (path == oldPath) {
+						binding.path = newPath;
+					}
+					
+					if (curve != null) {
+						AnimationUtility.SetEditorCurve(animationClip, binding, curve);
+					} else {
+						AnimationUtility.SetObjectReferenceCurve(animationClip, binding, objectReferenceCurve);
+					}
+					
+				}
 			}
 		}
-		
-		FillModel();
-		this.Repaint();
 	}
 	
 	GameObject FindObjectInRoot(string path) {
