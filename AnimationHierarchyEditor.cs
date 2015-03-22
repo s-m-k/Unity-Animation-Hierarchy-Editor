@@ -333,7 +333,7 @@ public class AnimationHierarchyEditor : EditorWindow {
 				}
 			}
 		}
-
+		EditorUtility.ClearProgressBar();
 		FillModel();
 	}
 	
