@@ -113,8 +113,10 @@ public class AnimationHierarchyEditor : EditorWindow {
 			GUILayout.Label("Object:", GUILayout.Width(columnWidth));
 			EditorGUILayout.EndHorizontal();
 			
-			if (paths != null) {
-				foreach (string path in pathsKeys) {
+			if (paths != null) 
+			{
+				foreach (string path in pathsKeys) 
+				{
 					GUICreatePathItem(path);
 				}
 			}
@@ -182,10 +184,6 @@ public class AnimationHierarchyEditor : EditorWindow {
 		} catch (UnityException ex) {
 			Debug.LogError(ex.Message);
 		}
-
-		
-		FillModel();
-		this.Repaint();
 	}
 	
 	void OnInspectorUpdate() {
@@ -335,6 +333,7 @@ public class AnimationHierarchyEditor : EditorWindow {
 		}
 		EditorUtility.ClearProgressBar();
 		FillModel();
+		this.Repaint();
 	}
 	
 	GameObject FindObjectInRoot(string path) {
