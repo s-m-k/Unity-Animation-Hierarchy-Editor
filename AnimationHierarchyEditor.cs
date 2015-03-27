@@ -226,6 +226,8 @@ public class AnimationHierarchyEditor : EditorWindow {
 		sReplacementOldRoot = oldRoot;
 		sReplacementNewRoot = newRoot;
 
+		AssetDatabase.StartAssetEditing();
+		
 		for ( int iCurrentClip = 0; iCurrentClip < animationClips.Count; iCurrentClip++ )
 		{
 			AnimationClip animationClip =  animationClips[iCurrentClip];
@@ -275,6 +277,7 @@ public class AnimationHierarchyEditor : EditorWindow {
 			}
 
 		}
+		AssetDatabase.StopAssetEditing();
 		EditorUtility.ClearProgressBar();
 		
 		FillModel();
@@ -286,7 +289,7 @@ public class AnimationHierarchyEditor : EditorWindow {
 		if (paths[newPath] != null) {
 			throw new UnityException("Path " + newPath + " already exists in that animation!");
 		}
-		
+		AssetDatabase.StartAssetEditing();
 		for ( int iCurrentClip = 0; iCurrentClip < animationClips.Count; iCurrentClip++ )
 		{
 			AnimationClip animationClip =  animationClips[iCurrentClip];
@@ -331,6 +334,7 @@ public class AnimationHierarchyEditor : EditorWindow {
 				}
 			}
 		}
+		AssetDatabase.StopAssetEditing();
 		EditorUtility.ClearProgressBar();
 		FillModel();
 		this.Repaint();
